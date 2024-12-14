@@ -4,7 +4,10 @@ import pymongo
 from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.functions import col, lit, max as spark_max, upper, udf
-from pyspark.sql.types import StringType
+from pyspark.sql.types import (
+    StructType, StructField, StringType, DoubleType, ArrayType, LongType,
+    IntegerType, BooleanType, FloatType, TimestampType, DateType, MapType, BinaryType
+)
 from datetime import datetime
 from pathlib import Path
 from unidecode import unidecode
@@ -138,6 +141,18 @@ def save_reviews(reviews_df: DataFrame, directory: str):
     except Exception as e:
         logging.error(f"Erro ao salvar os dados: {e}")
         raise
+
+def get_schema(df, schema):
+    """
+    Obtém o DataFrame a seguir o schema especificado.
+    """
+    for field in schema.fields:
+        if field.dataType == IntegerType():
+            df = df.withColumn(field.name, df[field.name].cast(IntegerType()))
+        elif field.dataType == StringType():
+            df = df.withColumn(field.name, df[field.name].cast(StringType()))
+    return df.select([field.name for field in schema.fields])
+
 
 def write_to_mongo(spark: SparkSession, feedback_data: dict, collection_name: str):
     """

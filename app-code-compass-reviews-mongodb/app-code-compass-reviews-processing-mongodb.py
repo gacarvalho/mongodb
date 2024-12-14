@@ -4,7 +4,8 @@ import json
 from pyspark.sql import SparkSession
 from datetime import datetime
 from metrics import MetricsCollector, validate_ingest
-from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo
+from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema
+from schema_mongodb import mongodb_schema_bronze
 
 # Configuração básica de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
@@ -83,11 +84,17 @@ def create_spark_session(mongo_config):
         logging.error(f"Falhan ao criar SparkSession: {e}", exc_info=True)
         raise
 
+
+
 def save_dataframe(df, path, label):
     """
     Salva o DataFrame em formato parquet e loga a operação.
     """
     try:
+        schema = mongodb_schema_bronze()
+        # Alinhar o DataFrame ao schema definido
+        df = get_schema(df, schema)
+
         if df.limit(1).count() > 0:  # Verificar existência de dados
             logging.info(f"Salvando dados {label} para: {path}")
             save_reviews(df, path)
@@ -95,6 +102,7 @@ def save_dataframe(df, path, label):
             logging.warning(f"Nenhum dado {label} foi encontrado!")
     except Exception as e:
         logging.error(f"Erro ao salvar dados {label}: {e}", exc_info=True)
+
 
 def save_metrics(spark, metrics_json):
     """

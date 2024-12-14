@@ -1,6 +1,6 @@
 DOCKER_NETWORK = hadoop-network
 ENV_FILE = hadoop.env
-VERSION_REPOSITORY_DOCKER = 0.0.3
+VERSION_REPOSITORY_DOCKER = 1.0.0
 
 current_branch := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "default-branch")
 
@@ -13,7 +13,7 @@ create-network:
   # ############################################
 
 build-app-ingestion-reviews-mongodb-hdfs-compass:
-	docker build -t iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass:$(VERSION_REPOSITORY_DOCKER) ./application/mongodb
+	docker build -t iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass:$(VERSION_REPOSITORY_DOCKER) .
 	docker push iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass:$(VERSION_REPOSITORY_DOCKER)
 
 restart-docker:

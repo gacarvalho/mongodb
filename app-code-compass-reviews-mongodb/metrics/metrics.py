@@ -210,14 +210,32 @@ def validate_ingest(df: DataFrame) -> tuple:
         (col("app_version").isNull()) |
         (col("cpf").isNull()) |
         (col("app").isNull()) |
-        (col("os").isNull()) &
+        (col("os").isNull()) |
         (col("os_version").isNull()) |
         (col("timestamp").isNull())
     )
 
-    # Se houver duplicatas, adicionamos ao DataFrame de inválidos
-    if duplicate_count > 0:
-        invalid_records = invalid_records.union(duplicates)
+    # Lista de colunas do DataFrame original
+    original_columns = df.columns
+
+    # Verificação de duplicidade (apenas identificando os IDs duplicados)
+    duplicate_ids = df.groupBy("customer_id", "app_version", "rating").count().filter(col("count") > 1)
+
+    # Reconstituir o DataFrame `duplicates` com base nos IDs duplicados
+    duplicates = df.join(
+        duplicate_ids.select("customer_id", "app_version", "rating"),
+        on=["customer_id", "app_version", "rating"],
+        how="inner"
+    )
+
+    # Garantir que todas as colunas do esquema original estejam presentes no `duplicates`
+    for col_name in original_columns:
+        if col_name not in duplicates.columns:
+            duplicates = duplicates.withColumn(col_name, lit(None))
+
+
+    # Realiza a união após ajustar os esquemas
+    invalid_records = invalid_records.union(duplicates)
 
     print_validation_results(validation_results)
 
