@@ -19,7 +19,7 @@ def main():
 
             # Capturar argumentos da linha de comando
             if len(sys.argv) != 2:
-                logging.error("Uso: spark-submit app.py <nome_da_colecao>")
+                logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
                 sys.exit(1)
             
             # Entrada e captura de variaveis e parametros
@@ -81,7 +81,7 @@ def create_spark_session(mongo_config):
             .getOrCreate()
 
     except Exception as e:
-        logging.error(f"Falhan ao criar SparkSession: {e}", exc_info=True)
+        logging.error(f"[*] Falha ao criar SparkSession: {e}", exc_info=True)
         raise
 
 
@@ -96,12 +96,12 @@ def save_dataframe(df, path, label):
         df = get_schema(df, schema)
 
         if df.limit(1).count() > 0:  # Verificar existência de dados
-            logging.info(f"Salvando dados {label} para: {path}")
+            logging.info(f"[*] Salvando dados {label} para: {path}")
             save_reviews(df, path)
         else:
-            logging.warning(f"Nenhum dado {label} foi encontrado!")
+            logging.warning(f"[*] Nenhum dado {label} foi encontrado!")
     except Exception as e:
-        logging.error(f"Erro ao salvar dados {label}: {e}", exc_info=True)
+        logging.error(f"[*] Erro ao salvar dados {label}: {e}", exc_info=True)
 
 
 def save_metrics(spark, metrics_json):
@@ -113,7 +113,7 @@ def save_metrics(spark, metrics_json):
         write_to_mongo(spark, metrics_data, "dt_datametrics_compass")
         logging.info(f"Métricas da aplicação salvas: {metrics_json}")
     except json.JSONDecodeError as e:
-        logging.error(f"Erro ao processar métricas: {e}", exc_info=True)
+        logging.error(f"[*] Erro ao processar métricas: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

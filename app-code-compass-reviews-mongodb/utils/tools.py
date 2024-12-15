@@ -63,7 +63,7 @@ def read_data_mongo(spark: SparkSession, pathSource: str, table_name: str) -> Da
     try:
         # Verifica se o caminho no HDFS existe
         if not hdfs_path_exists(pathSource):
-            logging.info(f"Diretório {pathSource} não existe. Fazendo leitura completa do MongoDB.")
+            logging.info(f"[*] Diretório {pathSource} não existe. Fazendo leitura completa do MongoDB.")
             df = spark.read \
                 .format("com.mongodb.spark.sql.DefaultSource") \
                 .option("collection", table_name) \
@@ -74,7 +74,7 @@ def read_data_mongo(spark: SparkSession, pathSource: str, table_name: str) -> Da
             last_partition_date = df_existing.select(spark_max("odate")).collect()[0][0]
             last_partition_date_iso = datetime.strptime(last_partition_date, "%Y%m%d").isoformat()
 
-            logging.info(f"Lendo dados a partir de timestamp >= {last_partition_date_iso}")
+            logging.info(f"[*] Lendo dados a partir de timestamp >= {last_partition_date_iso}")
             df = spark.read \
                 .format("com.mongodb.spark.sql.DefaultSource") \
                 .option("collection", table_name) \
@@ -83,8 +83,8 @@ def read_data_mongo(spark: SparkSession, pathSource: str, table_name: str) -> Da
 
     except Exception as e:
 
-        logging.info(f"Paritionamento inexistente, realizando carga full!")
-        logging.info("Fazendo leitura completa do MongoDB.")
+        logging.info(f"[*] Particionamento inexistente, realizando carga full!")
+        logging.info("[*] Fazendo leitura completa do MongoDB.")
 
         df = spark.read \
             .format("com.mongodb.spark.sql.DefaultSource") \
@@ -101,17 +101,15 @@ def hdfs_path_exists(path: str) -> bool:
         result = subprocess.run(["hdfs", "dfs", "-test", "-e", path], check=False)
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
-        logging.error(f"Erro ao verificar o caminho no HDFS: {e}")
+        logging.error(f"[*] Erro ao verificar o caminho no HDFS: {e}")
         return False
 
 def process_reviews(df: DataFrame, table_name: str) -> DataFrame:
     """
     Aplica transformações no DataFrame de reviews, removendo acentos e formatando os dados.
     """
-    logging.info(f"Processando o tratamento da camada histórica para {table_name}")
+    logging.info(f"[*] Processando o tratamento da camada histórica para {table_name}")
 
-    print("PRINT process_reviews OK!")
-    df.printSchema()
     df_transformed = df.select(
         F.col("_id.oid").alias("id"),
         F.upper(remove_accents_udf(F.col("comment"))).alias("comment"),
@@ -136,10 +134,10 @@ def save_reviews(reviews_df: DataFrame, directory: str):
     try:
         Path(directory).mkdir(parents=True, exist_ok=True)
         reviews_df.write.option("compression", "snappy").mode("overwrite").parquet(directory)
-        logging.info(f"Dados salvos em {directory} no formato parquet.")
+        logging.info(f"[*] Dados salvos em {directory} no formato parquet.")
 
     except Exception as e:
-        logging.error(f"Erro ao salvar os dados: {e}")
+        logging.error(f"[*] Erro ao salvar os dados: {e}")
         raise
 
 def get_schema(df, schema):
@@ -172,13 +170,13 @@ def write_to_mongo(spark: SparkSession, feedback_data: dict, collection_name: st
         elif isinstance(feedback_data, list):
             collection.insert_many(feedback_data)
         else:
-            logging.error("Os dados devem ser um dicionário ou uma lista de dicionários.")
-            raise ValueError("Formato de dados inválido para inserção no MongoDB.")
+            logging.error("[*] Os dados devem ser um dicionário ou uma lista de dicionários.")
+            raise ValueError("[*] Formato de dados inválido para inserção no MongoDB.")
 
-        logging.info(f"Dados inseridos com sucesso na coleção {collection_name}.")
+        logging.info(f"[*] Dados inseridos com sucesso na coleção {collection_name}.")
 
     except Exception as e:
-        logging.error(f"Erro ao escrever no MongoDB: {e}")
+        logging.error(f"[*] Erro ao escrever no MongoDB: {e}")
         raise
 
     finally:
