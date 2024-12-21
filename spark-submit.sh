@@ -68,7 +68,7 @@ run_spark_submit() {
     --conf spark.yarn.appMasterEnv.MONGO_PORT=27017 \
     --conf spark.yarn.appMasterEnv.MONGO_DB=compass \
     --name app-extract-mongodb-reviews-to-hdfs-$PARAM1 \
-    /app/app-code-compass-reviews-processing-mongodb.py $PARAM1"
+    /app/repo_extc_mongodb.py $PARAM1"
 
   # Exibe o comando para depuração
   log "Comando spark-submit que será executado: $spark_cmd"
