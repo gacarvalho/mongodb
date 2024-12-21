@@ -11,6 +11,11 @@ on:
 env:
   DOCKER_IMAGE: "iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass"
   DOCKER_TAG: "1.0.0"
+  MONGO_USER: "test_user"
+  MONGO_PASS: "test_pass"
+  MONGO_HOST: "localhost"
+  MONGO_PORT: "27017"
+  MONGO_DB: "test_database"
 
 jobs:
   # Job para rodar os testes unitários
