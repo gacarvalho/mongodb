@@ -189,8 +189,13 @@ def validate_ingest(df: DataFrame) -> tuple:
         validation_results["type_consistency_check"]["code"] = 300
         validation_results["type_consistency_check"]["message"] = "Consistência dos tipos de dados verificada com sucesso."
 
+    cols = [
+        "id","comment","votes_count","os","os_version","country","age","customer_id",
+        "cpf","app_version","rating","timestamp","app",
+    ]
+
     # Modificação: Remover o uso de subtract e filtrar registros válidos
-    valid_records = df.filter(
+    valid_records = df.select(*cols).filter(
         (col("customer_id").isNotNull()) &
         (col("rating").isNotNull()) &
         (col("comment").isNotNull()) &
@@ -203,7 +208,7 @@ def validate_ingest(df: DataFrame) -> tuple:
     )
 
     # Agora, gerando os registros inválidos de maneira mais direta
-    invalid_records = df.filter(
+    invalid_records = df.select(*cols).filter(
         (col("customer_id").isNull()) |
         (col("rating").isNull()) |
         (col("comment").isNull()) |

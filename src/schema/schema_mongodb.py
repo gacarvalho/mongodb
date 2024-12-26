@@ -16,3 +16,4 @@ def mongodb_schema_bronze():
     StructField('timestamp', StringType(), True),
     StructField('app', StringType(), True)
 ])
+
