@@ -4,7 +4,7 @@ import json
 from pyspark.sql import SparkSession
 from datetime import datetime
 from metrics import MetricsCollector, validate_ingest
-from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema
+from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema, save_metrics_job_fail
 from schema_mongodb import mongodb_schema_bronze
 
 # Configuração básica de logging
@@ -59,6 +59,22 @@ def main():
 
     except Exception as e:
         logging.error(f"Um erro ocorreu: {e}", exc_info=True)
+        # JSON de erro
+        error_metrics = {
+            "data_e_hora": datetime.now().isoformat(),
+            "camada": "bronze",
+            "grupo": "compass",
+            "job": "internal_database_reviews",
+            "relevancia": "0",
+            "torre": "SBBR_COMPASS",
+            "erro": str(e)
+        }
+
+        metrics_json = json.dumps(error_metrics)
+
+        # Salvar métricas de erro no MongoDB
+        save_metrics_job_fail(metrics_json)
+
         sys.exit(1)
 
     finally:

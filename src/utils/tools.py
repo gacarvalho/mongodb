@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 import pymongo
 from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
@@ -182,3 +183,14 @@ def write_to_mongo(spark: SparkSession, feedback_data: dict, collection_name: st
     finally:
         client.close()
         spark.stop()
+
+def save_metrics_job_fail(metrics_json):
+    """
+    Salva as métricas no MongoDB.
+    """
+    try:
+        metrics_data = json.loads(metrics_json)
+        write_to_mongo(metrics_data, "dt_datametrics_fail_compass")
+        logging.info(f"[*] Métricas da aplicação salvas: {metrics_json}")
+    except json.JSONDecodeError as e:
+        logging.error(f"[*] Erro ao processar métricas: {e}", exc_info=True)
