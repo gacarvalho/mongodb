@@ -12,50 +12,51 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
                     handlers=[logging.FileHandler("app.log"), logging.StreamHandler()])
  
 def main():
+
+    # Criação da sessão Spark
+    mongo_config = load_mongo_config()  # Carregar as credenciais de MongoDB
+    spark = create_spark_session(mongo_config)
+
     try:
-        # Criação da sessão Spark
-        mongo_config = load_mongo_config()  # Carregar as credenciais de MongoDB
-        with create_spark_session(mongo_config)as spark:
+        # Capturar argumentos da linha de comando
+        if len(sys.argv) != 3:
+            logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
+            sys.exit(1)
 
-            # Capturar argumentos da linha de comando
-            if len(sys.argv) != 2:
-                logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
-                sys.exit(1)
-            
-            # Entrada e captura de variaveis e parametros
-            table_name = sys.argv[1]
+        # Entrada e captura de variaveis e parametros
+        table_name = sys.argv[1]
 
-            # Define o caminho do HDFS com base na data atual
-            date_path = datetime.now().strftime("%Y%m%d")
-            path_source = f"/santander/bronze/compass/reviews/mongodb/{table_name}/odate={date_path}/"
+        # Define o caminho do HDFS com base na data atual
+        date_path = datetime.now().strftime("%Y%m%d")
+        path_source = f"/santander/bronze/compass/reviews/mongodb/{table_name}/odate={date_path}/"
 
-            # Iniciar coleta de métricas
-            metrics_collector = MetricsCollector(spark)
-            metrics_collector.start_collection()
+        # Iniciar coleta de métricas
+        metrics_collector = MetricsCollector(spark)
+        metrics_collector.start_collection()
 
-            # Leitura de dados do MongoDB
-            df = read_data_mongo(spark, path_source, table_name)
-            df.show(truncate=False)
+        # Leitura de dados do MongoDB
+        df = read_data_mongo(spark, path_source, table_name)
+        df.show(truncate=False)
 
-            # Processamento dos dados
-            df_processado = process_reviews(df, table_name)
+        # Processamento dos dados
+        df_processado = process_reviews(df, table_name)
 
-            # Validação e separação dos dados válidos e inválidos
-            valid_df, invalid_df, validation_results = validate_ingest(df_processado)
+        # Validação e separação dos dados válidos e inválidos
+        valid_df, invalid_df, validation_results = validate_ingest(df_processado)
 
-            # Salvar dados válidos
-            save_dataframe(valid_df, path_source, "valido")
+        # Salvar dados válidos
+        save_dataframe(valid_df, path_source, "valido")
 
-            # Salvar dados inválidos
-            valid_df.show(truncate=False)
+        # Salvar dados inválidos
+        valid_df.show(truncate=False)
 
 
-            # Coleta de métricas após o processamento
-            metrics_collector.end_collection()
-            metrics_json = metrics_collector.collect_metrics(valid_df, invalid_df, validation_results, table_name)
+        # Coleta de métricas após o processamento
+        metrics_collector.end_collection()
+        metrics_json = metrics_collector.collect_metrics(valid_df, invalid_df, validation_results, table_name)
 
-            # Salvar métricas no MongoDB
-            save_metrics(spark, metrics_json)
+        # Salvar métricas no MongoDB
+        save_metrics(spark, metrics_json)
 
     except Exception as e:
         logging.error(f"Um erro ocorreu: {e}", exc_info=True)
