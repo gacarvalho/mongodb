@@ -24,7 +24,7 @@ def main():
             sys.exit(1)
 
         # Entrada e captura de variaveis e parametros
-        table_name = sys.argv[1]
+        table_name = sys.argv[2]
 
         # Define o caminho do HDFS com base na data atual
         date_path = datetime.now().strftime("%Y%m%d")
