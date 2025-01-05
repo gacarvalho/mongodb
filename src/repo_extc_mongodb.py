@@ -74,7 +74,7 @@ def main():
         metrics_json = json.dumps(error_metrics)
 
         # Salvar métricas de erro no MongoDB
-        save_metrics_job_fail(metrics_json)
+        save_metrics_job_fail(spark, metrics_json)
 
         sys.exit(1)
 
