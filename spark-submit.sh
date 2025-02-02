@@ -67,7 +67,7 @@ run_spark_submit() {
     --conf spark.executor.cores=$executor_cores \
     --conf spark.executor.instances=$executor_instances \
     --conf spark.default.parallelism=$parallelism \
-    --conf spark.sql.shuffle.partitions=$shuffle_partitions \    
+    --conf spark.sql.shuffle.partitions=$shuffle_partitions \
     --conf spark.yarn.executor.memoryOverhead=$executor_memory_overhead \
     --conf spark.pyspark.python=/usr/bin/python3 \
     --conf spark.pyspark.driver.python=/usr/bin/python3 \
