@@ -37,7 +37,8 @@ load_yaml_config() {
   fi
 
   # Carrega as configurações do YAML usando `yq`
-  executor_memory=$(yq e '.spark.executor_memory' "$config_file")
+  executor_memory=$(yq e '.spark.executor_memory' "$config_file")  
+  executor_memory_overhead=$(yq e '.spark.spark_yarn_executor_memory_overhead' "$config_file")
   driver_memory=$(yq e '.spark.driver_memory' "$config_file")
   executor_cores=$(yq e '.spark.spark_executor_cores' "$config_file")
   executor_instances=$(yq e '.spark.spark_executor_instances' "$config_file" // "1")
@@ -66,7 +67,8 @@ run_spark_submit() {
     --conf spark.executor.cores=$executor_cores \
     --conf spark.executor.instances=$executor_instances \
     --conf spark.default.parallelism=$parallelism \
-    --conf spark.sql.shuffle.partitions=$shuffle_partitions \
+    --conf spark.sql.shuffle.partitions=$shuffle_partitions \    
+    --conf spark.yarn.executor.memoryOverhead=$executor_memory_overhead \
     --conf spark.pyspark.python=/usr/bin/python3 \
     --conf spark.pyspark.driver.python=/usr/bin/python3 \
     --conf 'spark.driver.extraJavaOptions=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=8090 -Dcom.sun.management.jmxremote.rmi.port=8091 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=10.101.34.131' \
