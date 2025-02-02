@@ -46,17 +46,23 @@ load_yaml_config() {
   shuffle_partitions=$(yq e '.spark.spark_sql_shuffle_partitions' "$config_file")
   network_timeout=$(yq e '.spark.spark_network_timeout' "$config_file" // "600s")
 
-
-  log "Configurações carregadas do YAML: $config_file"
+  log "Configurações carregadas do YAML:"
+  log "executor_memory: $executor_memory"
+  log "executor_memory_overhead: $executor_memory_overhead"
+  log "driver_memory: $driver_memory"
+  log "executor_cores: $executor_cores"
+  log "executor_instances: $executor_instances"
+  log "parallelism: $parallelism"
+  log "shuffle_partitions: $shuffle_partitions"
+  log "network_timeout: $network_timeout"
 }
 
 # Função para montar e executar o Spark Submit
 run_spark_submit() {
-  if [ -f /app/.env ]; then
+  if [[ -f /app/.env ]]; then
     export $(grep -v '^#' /app/.env | xargs)
   else
-    echo "Arquivo .env não encontrado!"
-    exit 1
+    error_exit "Arquivo .env não encontrado!"
   fi
 
   local spark_cmd="$SPARK_HOME/bin/spark-submit \
@@ -78,17 +84,17 @@ run_spark_submit() {
     --packages org.mongodb.spark:mongo-spark-connector_2.12:2.4.1,ch.cern.sparkmeasure:spark-measure_2.12:0.16 \
     --py-files /app/dependencies.zip,/app/metrics.py,/app/tools.py,/app/schema_mongodb.py \
     --conf spark.executorEnv.MONGO_USER=$MONGO_USER \
-    --conf spark.executorEnv.MONGO_PASS=$MONGO_PASS\
+    --conf spark.executorEnv.MONGO_PASS=$MONGO_PASS \
     --conf spark.executorEnv.MONGO_HOST=mongodb \
     --conf spark.executorEnv.MONGO_PORT=27017 \
     --conf spark.executorEnv.MONGO_DB=compass \
     --conf spark.driverEnv.MONGO_USER=$MONGO_USER \
-    --conf spark.driverEnv.MONGO_PASS=$MONGO_PASS\
+    --conf spark.driverEnv.MONGO_PASS=$MONGO_PASS \
     --conf spark.driverEnv.MONGO_HOST=mongodb \
     --conf spark.driverEnv.MONGO_PORT=27017 \
     --conf spark.driverEnv.MONGO_DB=compass \
     --conf spark.yarn.appMasterEnv.MONGO_USER=$MONGO_USER \
-    --conf spark.yarn.appMasterEnv.MONGO_PASS=$MONGO_PASS\
+    --conf spark.yarn.appMasterEnv.MONGO_PASS=$MONGO_PASS \
     --conf spark.yarn.appMasterEnv.MONGO_HOST=mongodb \
     --conf spark.yarn.appMasterEnv.MONGO_PORT=27017 \
     --conf spark.yarn.appMasterEnv.MONGO_DB=compass \
@@ -96,10 +102,11 @@ run_spark_submit() {
     /app/repo_extc_mongodb.py $CONFIG_ENV $PARAM1"
 
   # Exibe o comando para depuração
-  log "Comando spark-submit que será executado: $spark_cmd"
+  log "Comando spark-submit que será executado:"
+  echo "$spark_cmd"
 
-  # Executa o Spark Submit e captura o código de retorno
-  eval $spark_cmd
+  # Executa o Spark Submit
+  $spark_cmd
   local exit_code=$?
 
   if [[ $exit_code -ne 0 ]]; then
@@ -114,7 +121,7 @@ log "************************************************************"
 log "Iniciando Execução de Spark Submit"
 log "************************************************************"
 
-echo "parametros: $CONFIG_ENV $PARAM1 $PARAM2"
+echo "Parâmetros: $CONFIG_ENV $PARAM1 $PARAM2"
 
 # Define o arquivo de configuração com base no ambiente
 if [[ "$CONFIG_ENV" == "pre" ]]; then
@@ -122,10 +129,8 @@ if [[ "$CONFIG_ENV" == "pre" ]]; then
 elif [[ "$CONFIG_ENV" == "prod" ]]; then
   CONFIG_FILE="/app/spark-pro.yaml"
 else
-  echo "Ambiente inválido! Use 'pre' ou 'prod', param enviado: $CONFIG_ENV."
-  exit 1
+  error_exit "Ambiente inválido! Use 'pre' ou 'prod'. Param enviado: $CONFIG_ENV."
 fi
-
 
 # Valida as variáveis de ambiente e parâmetros
 validate_params
