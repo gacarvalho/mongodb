@@ -10,3 +10,5 @@ spark:
   spark_rdd_compress: "true"          # Habilita compressão de RDDs
   spark_shuffle_compress: "true"      # Habilita compressão de shuffle
   spark_io_compression_codec: "lz4"   # Codec para compressão de dados
+  spark_yarn_executor_memory_overhead: "1g" 
+
