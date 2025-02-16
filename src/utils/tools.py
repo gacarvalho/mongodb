@@ -14,6 +14,7 @@ from pathlib import Path
 from unidecode import unidecode
 from urllib.parse import quote_plus
 import subprocess
+from elasticsearch import Elasticsearch
 
 
 # Configuração de logging global
@@ -184,13 +185,31 @@ def write_to_mongo(spark: SparkSession, feedback_data: dict, collection_name: st
         client.close()
         spark.stop()
 
-def save_metrics_job_fail(spark: SparkSession, metrics_json):
+def save_metrics_job_fail(metrics_json):
     """
-    Salva as métricas no MongoDB.
+    Salva as métricas de aplicações com falhas
     """
+
+    ES_HOST = "http://elasticsearch:9200"
+    ES_INDEX = "compass_dt_datametrics_fail"
+    ES_USER = os.environ["ES_USER"]
+    ES_PASS = os.environ["ES_PASS"]
+
+    # Conectar ao Elasticsearch
+    es = Elasticsearch(
+        [ES_HOST],
+        basic_auth=(ES_USER, ES_PASS)
+    )
+
     try:
+        # Converter JSON em dicionário
         metrics_data = json.loads(metrics_json)
-        write_to_mongo(spark, metrics_data, "dt_datametrics_fail_compass")
-        logging.info(f"[*] Métricas da aplicação salvas: {metrics_json}")
+
+        # Inserir no Elasticsearch
+        response = es.index(index=ES_INDEX, document=metrics_data)
+
+        logging.info(f"[*] Métricas da aplicação salvas no Elasticsearch: {response}")
     except json.JSONDecodeError as e:
         logging.error(f"[*] Erro ao processar métricas: {e}", exc_info=True)
+    except Exception as e:
+        logging.error(f"[*] Erro ao salvar métricas no Elasticsearch: {e}", exc_info=True)

@@ -1,11 +1,14 @@
-import logging
+import os
 import sys
 import json
+import logging
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import current_timestamp, date_format
 from datetime import datetime
 from metrics import MetricsCollector, validate_ingest
 from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema, save_metrics_job_fail
 from schema_mongodb import mongodb_schema_bronze
+from elasticsearch import Elasticsearch
 
 # Configuração básica de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
@@ -19,16 +22,18 @@ def main():
 
     try:
         # Capturar argumentos da linha de comando
-        if len(sys.argv) != 3:
+        if len(sys.argv) != 4:
             logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
             sys.exit(1)
 
         # Entrada e captura de variaveis e parametros
+        env = sys.argv[1]
         table_name = sys.argv[2]
+        type_client = sys.argv[3]
 
         # Define o caminho do HDFS com base na data atual
         date_path = datetime.now().strftime("%Y%m%d")
-        path_source = f"/santander/bronze/compass/reviews/mongodb/{table_name}/odate={date_path}/"
+        path_source = f"/santander/bronze/compass/reviews/mongodb/{table_name}_{type_client}/odate={date_path}/"
 
         # Iniciar coleta de métricas
         metrics_collector = MetricsCollector(spark)
@@ -36,7 +41,9 @@ def main():
 
         # Leitura de dados do MongoDB
         df = read_data_mongo(spark, path_source, table_name)
-        df.show(truncate=False)
+
+        if env == "pre":
+            df.show(truncate=False)
 
         # Processamento dos dados
         df_processado = process_reviews(df, table_name)
@@ -47,16 +54,16 @@ def main():
         # Salvar dados válidos
         save_dataframe(valid_df, path_source, "valido")
 
-        # Salvar dados inválidos
-        valid_df.show(truncate=False)
+        if env == "pre":
+            valid_df.show(truncate=False)
 
 
         # Coleta de métricas após o processamento
         metrics_collector.end_collection()
-        metrics_json = metrics_collector.collect_metrics(valid_df, invalid_df, validation_results, table_name)
+        metrics_json = metrics_collector.collect_metrics(valid_df, invalid_df, validation_results, table_name, type_client)
 
         # Salvar métricas no MongoDB
-        save_metrics(spark, metrics_json)
+        save_metrics(metrics_json)
 
     except Exception as e:
         logging.error(f"Um erro ocorreu: {e}", exc_info=True)
@@ -68,13 +75,14 @@ def main():
             "job": "internal_database_reviews",
             "relevancia": "0",
             "torre": "SBBR_COMPASS",
+            "client": type_client,
             "erro": str(e)
         }
 
         metrics_json = json.dumps(error_metrics)
 
         # Salvar métricas de erro no MongoDB
-        save_metrics_job_fail(spark, metrics_json)
+        save_metrics_job_fail(metrics_json)
 
         sys.exit(1)
 
@@ -121,16 +129,34 @@ def save_dataframe(df, path, label):
         logging.error(f"[*] Erro ao salvar dados {label}: {e}", exc_info=True)
 
 
-def save_metrics(spark, metrics_json):
+def save_metrics(metrics_json):
     """
-    Salva as métricas no MongoDB.
+    Salva as métricas de aplicações com falhas
     """
+
+    ES_HOST = "http://elasticsearch:9200"
+    ES_INDEX = "compass_dt_datametrics"
+    ES_USER = os.environ["ES_USER"]
+    ES_PASS = os.environ["ES_PASS"]
+
+    # Conectar ao Elasticsearch
+    es = Elasticsearch(
+        [ES_HOST],
+        basic_auth=(ES_USER, ES_PASS)
+    )
+
     try:
+        # Converter JSON em dicionário
         metrics_data = json.loads(metrics_json)
-        write_to_mongo(spark, metrics_data, "dt_datametrics_compass")
-        logging.info(f"Métricas da aplicação salvas: {metrics_json}")
+
+        # Inserir no Elasticsearch
+        response = es.index(index=ES_INDEX, document=metrics_data)
+
+        logging.info(f"[*] Métricas da aplicação salvas no Elasticsearch: {response}")
     except json.JSONDecodeError as e:
         logging.error(f"[*] Erro ao processar métricas: {e}", exc_info=True)
+    except Exception as e:
+        logging.error(f"[*] Erro ao salvar métricas no Elasticsearch: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

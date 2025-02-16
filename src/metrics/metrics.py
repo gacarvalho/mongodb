@@ -3,7 +3,7 @@ import pyspark.sql.functions as F
 from datetime import datetime
 from pyspark.sql.functions import col
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import array, col, count, when, lit
+from pyspark.sql.functions import array, col, count, when, lit, current_timestamp, date_format
 from sparkmeasure import StageMetrics
 import re
 
@@ -43,9 +43,30 @@ class MetricsCollector:
                     stage_metrics[key] = value
         return stage_metrics
 
-    def collect_metrics(self, valid_df: DataFrame, invalid_df: DataFrame, validation_results: dict, id_app) -> str:
+
+    def collect_metrics(self, valid_df: DataFrame, invalid_df: DataFrame, validation_results: dict, id_app, type_client) -> str:
         """
         Coleta métricas de processamento, validação e recursos utilizados.
+
+        Args:
+            valid_df (DataFrame): DataFrame contendo os registros válidos.
+            invalid_df (DataFrame): DataFrame contendo os registros inválidos.
+            validation_results (dict): Dicionário com os resultados da validação.
+
+        Returns:
+            str: Um JSON com as métricas coletadas, incluindo:
+                - Informações gerais da aplicação (ID, sigla do projeto).
+                - Contagem de registros válidos e inválidos.
+                - Tempo total de processamento.
+                - Uso de memória.
+                - Número de nós de dados.
+                - Métricas de estágio do Spark.
+                - Resultados da validação.
+                - Contadores de sucesso e erro da validação.
+
+        Esta função coleta diversas métricas relacionadas ao processo de ingestão e validação de dados.
+        As métricas são calculadas com base nos DataFrames de dados válidos e inválidos, nos resultados da validação
+        e nas métricas de execução do Spark. O resultado final é um JSON que pode ser utilizado para monitoramento e análise.
         """
         if self.start_time is None or self.end_time is None:
             raise ValueError("[*] O tempo de início ou término não foi definido corretamente. Verifique a execução dos métodos start_collection e end_collection.")
@@ -53,9 +74,9 @@ class MetricsCollector:
         total_time = self.end_time - self.start_time
         start_ts = self.start_time.strftime("%Y-%m-%d %H:%M:%S")
         end_ts = self.end_time.strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         memory_used = self.spark.sparkContext._jvm.org.apache.spark.util.SizeEstimator.estimate(valid_df._jdf) / (1024 * 1024)
-        data_nodes_count = len(self.spark.sparkContext.getConf().get("spark.executor.instances", "1").split(","))
         count_valid = valid_df.count()
         count_invalid = invalid_df.count()
         total_records = count_valid + count_invalid
@@ -69,6 +90,7 @@ class MetricsCollector:
             "type_consistency_check": validation_results["type_consistency_check"],
         }
 
+        # Contadores de sucesso e erro
         success_count = sum(1 for result in validation_metrics.values() if result["status"])
         error_count = len(validation_metrics) - success_count
 
@@ -77,7 +99,7 @@ class MetricsCollector:
             "sigla": {
                 "sigla": "DT",
                 "projeto": "compass",
-                "cat": "bronze_ingestion"
+                "layer_lake": "bronze_ingestion"
             },
             "valid_data": {
                 "count": count_valid,
@@ -90,11 +112,11 @@ class MetricsCollector:
             "total_records": total_records,
             "total_processing_time": str(total_time),
             "memory_used": memory_used,
-            "data_nodes_count": data_nodes_count,
             "stages": stage_metrics_dict,
             "validation_results": validation_metrics,
             "success_count": success_count,
             "error_count": error_count,
+            "type_client": type_client,
             "source": {
                 "app": id_app,
                 "search": "internal_database"
@@ -102,19 +124,23 @@ class MetricsCollector:
             "_ts": {
                 "compass_start_ts": start_ts,
                 "compass_end_ts": end_ts
-            }
+            },
+            "timestamp": timestamp
+
         }
 
         return json.dumps(metrics)
 
 def print_validation_results(results: dict):
     print(f"\n[*] Validação da ingestão concluída para {results['total_records']} registros.\n")
+
     for check, result in results.items():
         if check != "total_records":
             status = "PASSOU" if result["status"] else "FALHOU"
             print(f"{check.replace('_', ' ').title()}: {status}")
             if result["message"]:
                 print(f"  -> {result['message']}\n")
+
 
 def validate_ingest(df: DataFrame) -> tuple:
     """
@@ -134,20 +160,17 @@ def validate_ingest(df: DataFrame) -> tuple:
         - Verifica a existência de valores nulos em colunas críticas.
         - Verifica a consistência dos tipos de dados.
 
-    Códigos de retorno:
-        200: Sucesso
-        100: Nenhum valor nulo encontrado
-        101: Valores nulos encontrados
-        200: Nenhum registro duplicado encontrado
-        201: Registros duplicados encontrados
-        300: Consistência dos tipos de dados verificada com sucesso
-        301: Valores não numéricos encontrados
+    Codigos de retorno:
+        200: Sucesso (Nenhum problema encontrado)
+        400: Erro nos dados (Valores nulos ou tipos inválidos)
+        409: Conflito de dados (Registros duplicados encontrados)
     """
+
 
     validation_results = {
         "duplicate_check": {"message": "", "status": True, "code": 200},
-        "null_check": {"message": "", "status": True, "code": 100},
-        "type_consistency_check": {"message": "", "status": True, "code": 300},
+        "null_check": {"message": "", "status": True, "code": 200},
+        "type_consistency_check": {"message": "", "status": True, "code": 200},
         "total_records": df.count(),
     }
 
@@ -156,7 +179,7 @@ def validate_ingest(df: DataFrame) -> tuple:
     duplicate_count = duplicates.count()
     if duplicate_count > 0:
         validation_results["duplicate_check"]["status"] = False
-        validation_results["duplicate_check"]["code"] = 201
+        validation_results["duplicate_check"]["code"] = 409
         validation_results["duplicate_check"]["message"] = f"Registros duplicados encontrados: {duplicate_count} registros com base no 'id'."
     else:
         validation_results["duplicate_check"]["status"] = True
@@ -171,23 +194,23 @@ def validate_ingest(df: DataFrame) -> tuple:
     null_issues = {col: count for col, count in null_counts.items() if count > 0}
     if null_issues:
         validation_results["null_check"]["status"] = False
-        validation_results["null_check"]["code"] = 101
+        validation_results["null_check"]["code"] = 400
         validation_results["null_check"]["message"] = f"Valores nulos encontrados nas colunas: {null_issues}."
     else:
         validation_results["null_check"]["status"] = True
-        validation_results["null_check"]["code"] = 100
-        validation_results["null_check"]["message"] = "Nenhum valor nulo encontrado nas colunas críticas."
+        validation_results["null_check"]["code"] = 200
+        validation_results["null_check"]["message"] = "Nenhum valor nulo encontrado nas colunas criticas."
 
     # Consistência dos tipos de dados
     invalid_rating = df.filter(~df.rating.cast("int").isNotNull())
     if invalid_rating.count() > 0:
         validation_results["type_consistency_check"]["status"] = False
-        validation_results["type_consistency_check"]["code"] = 301
+        validation_results["type_consistency_check"]["code"] = 400
         validation_results["type_consistency_check"]["message"] = "Valores não numéricos encontrados na coluna 'rating'."
     else:
         validation_results["type_consistency_check"]["status"] = True
-        validation_results["type_consistency_check"]["code"] = 300
-        validation_results["type_consistency_check"]["message"] = "Consistência dos tipos de dados verificada com sucesso."
+        validation_results["type_consistency_check"]["code"] = 200
+        validation_results["type_consistency_check"]["message"] = "Consistencia dos tipos de dados verificada com sucesso."
 
     cols = [
         "id","comment","votes_count","os","os_version","country","age","customer_id",

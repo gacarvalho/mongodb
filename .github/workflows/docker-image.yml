@@ -10,7 +10,7 @@ on:
 
 env:
   DOCKER_IMAGE: "iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass"
-  DOCKER_TAG: "1.0.0"
+  DOCKER_TAG: "1.0.1"
   MONGO_USER: "test_user"
   MONGO_PASS: "test_pass"
   MONGO_HOST: "localhost"
