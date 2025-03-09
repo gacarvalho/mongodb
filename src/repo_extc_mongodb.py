@@ -5,6 +5,7 @@ import logging
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp, date_format
 from datetime import datetime
+import pyspark.sql.functions as F
 from metrics import MetricsCollector, validate_ingest
 from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema, save_metrics_job_fail
 from schema_mongodb import mongodb_schema_bronze
@@ -22,14 +23,14 @@ def main():
 
     try:
         # Capturar argumentos da linha de comando
-        if len(sys.argv) != 4:
+        if len(sys.argv) != 5:
             logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
             sys.exit(1)
 
         # Entrada e captura de variaveis e parametros
         env = sys.argv[1]
         table_name = sys.argv[2]
-        type_client = sys.argv[3]
+        type_client = sys.argv[4]
 
         # Define o caminho do HDFS com base na data atual
         date_path = datetime.now().strftime("%Y%m%d")
@@ -69,14 +70,14 @@ def main():
         logging.error(f"Um erro ocorreu: {e}", exc_info=True)
         # JSON de erro
         error_metrics = {
-            "data_e_hora": datetime.now().isoformat(),
-            "camada": "bronze",
-            "grupo": "compass",
-            "job": "internal_database_reviews",
-            "relevancia": "0",
+            "timestamp": date_format(current_timestamp(), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
+            "layer": "bronze",
+            "project": "compass",
+            "job": "mongodb_reviews",
+            "priority": "0",
             "torre": "SBBR_COMPASS",
-            "client": type_client,
-            "erro": str(e)
+            "client": F.upper(type_client),
+            "error": str(e)
         }
 
         metrics_json = json.dumps(error_metrics)

@@ -3,6 +3,7 @@ import pyspark.sql.functions as F
 from datetime import datetime
 from pyspark.sql.functions import col
 from pyspark.sql import SparkSession, DataFrame
+import pyspark.sql.functions as F
 from pyspark.sql.functions import array, col, count, when, lit, current_timestamp, date_format
 from sparkmeasure import StageMetrics
 import re
@@ -72,6 +73,9 @@ class MetricsCollector:
             raise ValueError("[*] O tempo de início ou término não foi definido corretamente. Verifique a execução dos métodos start_collection e end_collection.")
 
         total_time = self.end_time - self.start_time
+        formatted_time = f"{total_time.total_seconds() / 60:.2f} min"
+
+
         start_ts = self.start_time.strftime("%Y-%m-%d %H:%M:%S")
         end_ts = self.end_time.strftime("%Y-%m-%d %H:%M:%S")
         timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -96,10 +100,10 @@ class MetricsCollector:
 
         metrics = {
             "application_id": self.spark.sparkContext.applicationId,
-            "sigla": {
+            "owner": {
                 "sigla": "DT",
                 "projeto": "compass",
-                "layer_lake": "bronze_ingestion"
+                "layer_lake": "bronze"
             },
             "valid_data": {
                 "count": count_valid,
@@ -110,16 +114,16 @@ class MetricsCollector:
                 "percentage": (count_invalid / total_records * 100) if total_records > 0 else 0.0
             },
             "total_records": total_records,
-            "total_processing_time": str(total_time),
+            "total_processing_time": formatted_time,
             "memory_used": memory_used,
             "stages": stage_metrics_dict,
             "validation_results": validation_metrics,
             "success_count": success_count,
             "error_count": error_count,
-            "type_client": type_client,
+            "type_client": type_client.upper(),
             "source": {
                 "app": id_app,
-                "search": "internal_database"
+                "search": "mongodb"
             },
             "_ts": {
                 "compass_start_ts": start_ts,

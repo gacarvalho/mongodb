@@ -23,8 +23,8 @@ validate_params() {
     error_exit "O parâmetro CONFIG_ENV (pre ou prod) é obrigatório!"
   fi
 
-  if [[ -z "$PARAM1" ]] || [[ -z "$PARAM2" ]] || [[ -z "$PARAM3" ]]; then
-    error_exit "Os parâmetros PARAM1 e PARAM2 são obrigatórios!"
+  if [[ -z "$PARAM1" ]] || [[ -z "$PARAM2" ]] || [[ -z "$PARAM3" ]] ; then
+    error_exit "Os parâmetros PARAM1, PARAM2 e PARAM3 são obrigatórios!"
   fi
 }
 
@@ -95,8 +95,8 @@ run_spark_submit() {
     --conf spark.yarn.appMasterEnv.MONGO_HOST=mongodb \
     --conf spark.yarn.appMasterEnv.MONGO_PORT=27017 \
     --conf spark.yarn.appMasterEnv.MONGO_DB=compass \
-    --name dmc_ingestion_reviews_mongodb_$CONFIG_ENV-$PARAM1 \
-    /app/repo_extc_mongodb.py $CONFIG_ENV $PARAM1 $PARAM2"
+    --name dmc_ingestion_reviews_mongodb_$CONFIG_ENV_$PARAM1 \
+    /app/repo_extc_mongodb.py $CONFIG_ENV $PARAM1 $PARAM2 $PARAM3"
 
   # Exibe o comando para depuração
   log "Comando spark-submit que será executado: $spark_cmd"
