@@ -2,20 +2,43 @@ import os
 import sys
 import json
 import logging
+import argparse
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp, date_format
 from datetime import datetime
-import pyspark.sql.functions as F
 from metrics import MetricsCollector, validate_ingest
-from tools import load_mongo_config, read_data_mongo, process_reviews, save_reviews, write_to_mongo, get_schema, save_metrics_job_fail
+from tools import load_mongo_config, read_data_mongo, process_reviews, write_to_mongo, get_schema, save_dataframe, save_metrics
 from schema_mongodb import mongodb_schema_bronze
 from elasticsearch import Elasticsearch
 
+
 # Configuração básica de logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
-                    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()])
- 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Constantes da Aplicação ---
+PATH_TARGET_BASE = "/santander/bronze/compass/reviews/mongodb/"
+ENV_PRE_VALUE = "pre"
+ELASTIC_INDEX_SUCCESS = "compass_dt_datametrics"
+ELASTIC_INDEX_FAIL = "compass_dt_datametrics_fail"
+
+def parse_arguments():
+    """
+    Analisa os argumentos da linha de comando.
+    """
+    parser = argparse.ArgumentParser(description="Processa avaliações do MongoDB.")
+    parser.add_argument("<env>", type=str, help="Ambiente de execução (ex: 'pre', 'prod').")
+    parser.add_argument("<table_name>", type=str, help="ID da tabela do canal")
+    parser.add_argument("<type_client>", type=str, help="Tipo de cliente.")
+    return parser.parse_args()
+
+
 def main():
+    """
+    Capturar argumentos da linha de comando usando argparse
+    args = parse_arguments() # Descomente esta linha e comente a de baixo para usar argparse
+    No entanto, para manter a compatibilidade com a estrutura original de sys.argv,
+    continuaremos usando sys.argv, mas a recomendação é usar argparse.
+    """
 
     # Criação da sessão Spark
     mongo_config = load_mongo_config()  # Carregar as credenciais de MongoDB
@@ -24,7 +47,7 @@ def main():
     try:
         # Capturar argumentos da linha de comando
         if len(sys.argv) != 5:
-            logging.error("[*] Uso: spark-submit app.py <nome_da_colecao>")
+            logging.error("[*] Uso: spark-submit app.py <env> <nome_da_colecao> <tipo_cliente(pf_pj) ")
             sys.exit(1)
 
         # Entrada e captura de variaveis e parametros
@@ -33,8 +56,7 @@ def main():
         type_client = sys.argv[4]
 
         # Define o caminho do HDFS com base na data atual
-        date_path = datetime.now().strftime("%Y%m%d")
-        path_source = f"/santander/bronze/compass/reviews/mongodb/{table_name}_{type_client}/odate={date_path}/"
+        path_source = f"{PATH_TARGET_BASE}{table_name}_{type_client}/"
 
         # Iniciar coleta de métricas
         metrics_collector = MetricsCollector(spark)
@@ -43,8 +65,8 @@ def main():
         # Leitura de dados do MongoDB
         df = read_data_mongo(spark, path_source, table_name)
 
-        if env == "pre":
-            df.show(truncate=False)
+        if env == ENV_PRE_VALUE: # Usando constante
+            df.take(10)
 
         # Processamento dos dados
         df_processado = process_reviews(df, table_name)
@@ -53,40 +75,34 @@ def main():
         valid_df, invalid_df, validation_results = validate_ingest(df_processado)
 
         # Salvar dados válidos
-        save_dataframe(valid_df, path_source, "valido")
-
-        if env == "pre":
-            valid_df.show(truncate=False)
-
+        save_dataframe(
+            df=valid_df,
+            path=path_source,
+            label="valido",
+            schema=mongodb_schema_bronze(),
+            partition_column="odate", # data de carga referencia
+            compression="snappy"
+        )
 
         # Coleta de métricas após o processamento
         metrics_collector.end_collection()
         metrics_json = metrics_collector.collect_metrics(valid_df, invalid_df, validation_results, table_name, type_client)
 
         # Salvar métricas no MongoDB
-        save_metrics(metrics_json)
+        save_metrics(
+            metrics_type='success',
+            index=ELASTIC_INDEX_SUCCESS,
+            metrics_data= metrics_json
+        )
 
     except Exception as e:
-        logging.error(f"Um erro ocorreu: {e}", exc_info=True)
-        # JSON de erro
-        error_metrics = {
-            "timestamp": date_format(current_timestamp(), "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
-            "layer": "bronze",
-            "project": "compass",
-            "job": "mongodb_reviews",
-            "priority": "0",
-            "torre": "SBBR_COMPASS",
-            "client": F.upper(type_client),
-            "error": str(e)
-        }
-
-        metrics_json = json.dumps(error_metrics)
-
-        # Salvar métricas de erro no MongoDB
-        save_metrics_job_fail(metrics_json)
-
-        sys.exit(1)
-
+        logging.error(f"[*] Um erro ocorreu: {e}", exc_info=True)
+        save_metrics(
+            metrics_type="fail",
+            index=ELASTIC_INDEX_FAIL,
+            error=e,
+            client="UNKNOWN_CLIENT"
+        )
     finally:
         spark.stop()
 
@@ -100,7 +116,7 @@ def create_spark_session(mongo_config):
 
         # Configurar SparkSession com integração ao MongoDB
         return SparkSession.builder \
-            .appName("LeituraFeedback") \
+                .appName("App Reviews origem [MongoDB]") \
             .config("spark.mongodb.input.uri", mongo_uri) \
             .config("spark.mongodb.output.uri", mongo_uri) \
             .config("spark.sql.files.ignoreMissingFiles", "true") \
@@ -110,54 +126,6 @@ def create_spark_session(mongo_config):
         logging.error(f"[*] Falha ao criar SparkSession: {e}", exc_info=True)
         raise
 
-
-
-def save_dataframe(df, path, label):
-    """
-    Salva o DataFrame em formato parquet e loga a operação.
-    """
-    try:
-        schema = mongodb_schema_bronze()
-        # Alinhar o DataFrame ao schema definido
-        df = get_schema(df, schema)
-
-        if df.limit(1).count() > 0:  # Verificar existência de dados
-            logging.info(f"[*] Salvando dados {label} para: {path}")
-            save_reviews(df, path)
-        else:
-            logging.warning(f"[*] Nenhum dado {label} foi encontrado!")
-    except Exception as e:
-        logging.error(f"[*] Erro ao salvar dados {label}: {e}", exc_info=True)
-
-
-def save_metrics(metrics_json):
-    """
-    Salva as métricas de aplicações com falhas
-    """
-
-    ES_HOST = "http://elasticsearch:9200"
-    ES_INDEX = "compass_dt_datametrics"
-    ES_USER = os.environ["ES_USER"]
-    ES_PASS = os.environ["ES_PASS"]
-
-    # Conectar ao Elasticsearch
-    es = Elasticsearch(
-        [ES_HOST],
-        basic_auth=(ES_USER, ES_PASS)
-    )
-
-    try:
-        # Converter JSON em dicionário
-        metrics_data = json.loads(metrics_json)
-
-        # Inserir no Elasticsearch
-        response = es.index(index=ES_INDEX, document=metrics_data)
-
-        logging.info(f"[*] Métricas da aplicação salvas no Elasticsearch: {response}")
-    except json.JSONDecodeError as e:
-        logging.error(f"[*] Erro ao processar métricas: {e}", exc_info=True)
-    except Exception as e:
-        logging.error(f"[*] Erro ao salvar métricas no Elasticsearch: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
