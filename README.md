@@ -15,7 +15,7 @@ Essa aplicação faz parte do projeto **compass-deployment** que é uma soluçã
 
 
 
-`📦 artefato` `iamgacarvalho/dmc-app-ingestion-reviews-apple-store-hdfs-compass`
+`📦 artefato` `iamgacarvalho/dmc-app-ingestion-reviews-mongodb-hdfs-compass`
 
 - **Versão:** `1.0.1`
 - **Repositório:** [GitHub](https://github.com/gacarvalho/mongodb/)
@@ -39,4 +39,4 @@ Essa aplicação faz parte do projeto **compass-deployment** que é uma soluçã
 | **Particionamento** | Por data referencia de carga (odate)                                                 |
 | **Métricas**        | Tempo execução, memória, registros válidos/inválidos, performance Spark              |
 | **Tratamento Erros**| Logs detalhados, armazenamento separado de dados inválidos                           |
-| **Execução**        | `spark-submit repo_extc_apple_store.py <env> <nome_da_colecao> <tipo_cliente(pf_pj)` |
+| **Execução**        | `spark-submit repo_extc_mongodb.py <env> <nome_da_colecao> <tipo_cliente(pf_pj)` |
